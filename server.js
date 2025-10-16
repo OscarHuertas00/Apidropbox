@@ -11,15 +11,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middlewares
+// 🧩 Middlewares
 app.use(cors());
 app.use(express.json());
 app.use(fileUpload());
 
-// Dropbox SDK
+// 🗂️ Configuración de Dropbox
 const dbx = new Dropbox({ accessToken: process.env.DROPBOX_TOKEN });
 
-// Configurar Gmail
+// 📧 Configuración de correo (Gmail o SMTP)
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -28,31 +28,39 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Endpoint principal
+// 🚀 Ruta principal (prueba)
+app.get("/", (req, res) => {
+  res.json({ message: "API Dropbox funcionando correctamente 🚀" });
+});
+
+// 📤 Endpoint para subir archivos y enviar correos
 app.post("/api/upload", async (req, res) => {
   try {
     const { nombre, correo, cedula, ciudad, asunto } = req.body;
     const files = req.files?.files;
+
     if (!files) {
       return res.status(400).json({ ok: false, error: "No se enviaron archivos" });
     }
 
+    // Crear número de radicado
     const radicado = uuidv4().split("-")[0];
     const carpeta = `/formularios/${radicado}`;
 
     // Crear carpeta en Dropbox
     await dbx.filesCreateFolderV2({ path: carpeta });
 
-    // Manejar uno o varios archivos
+    // Subir uno o varios archivos
     const fileArray = Array.isArray(files) ? files : [files];
+
     for (const file of fileArray) {
       await dbx.filesUpload({
         path: `${carpeta}/${file.name}`,
-        contents: file.data, // el archivo en memoria
+        contents: file.data,
       });
     }
 
-    // Correo al administrador
+    // ✉️ Enviar correo al administrador
     await transporter.sendMail({
       from: process.env.FROM_EMAIL,
       to: process.env.ADMIN_EMAIL,
@@ -61,7 +69,7 @@ app.post("/api/upload", async (req, res) => {
 Nombre: ${nombre}\nCorreo: ${correo}\nCédula: ${cedula}\nCiudad: ${ciudad}\nAsunto: ${asunto}\nRadicado: ${radicado}`,
     });
 
-    // Correo al usuario
+    // ✉️ Enviar correo de confirmación al usuario
     await transporter.sendMail({
       from: process.env.FROM_EMAIL,
       to: correo,
@@ -69,6 +77,7 @@ Nombre: ${nombre}\nCorreo: ${correo}\nCédula: ${cedula}\nCiudad: ${ciudad}\nAsu
       text: `Hola ${nombre},\n\nTu solicitud ha sido radicada con el número ${radicado}.\nRecibirás una respuesta en un plazo máximo de 5 días hábiles.\n\nGracias.`,
     });
 
+    // ✅ Respuesta al cliente
     res.json({ ok: true, message: "Formulario enviado correctamente ✅", radicado });
   } catch (error) {
     console.error("❌ Error:", error);
@@ -76,8 +85,7 @@ Nombre: ${nombre}\nCorreo: ${correo}\nCédula: ${cedula}\nCiudad: ${ciudad}\nAsu
   }
 });
 
-app.get("/", (req, res) => {
-  res.json({ message: "API Dropbox sin almacenamiento funcionando 🚀" });
-});
+// 🔊 Iniciar servidor (solo local, Vercel lo ignora)
+app.listen(PORT, () => console.log(`✅ Servidor corriendo en http://localhost:${PORT}`));
 
-app.listen(PORT, () => console.log(`✅ Servidor en http://localhost:${PORT}`));
+export default app;
