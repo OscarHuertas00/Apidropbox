@@ -18,7 +18,9 @@
     "express": "^5.1.0",
     "express-fileupload": "^1.5.2",
     "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.9",
+    "resend": "^6.2.2",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
