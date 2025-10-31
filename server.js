@@ -12,13 +12,23 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ===============================
+// ⚙️ CONFIGURACIÓN GENERAL
+// ===============================
 app.set("trust proxy", 1);
-app.use(cors({ origin: "*", methods: ["GET", "POST"] }));
+app.use(cors({
+  origin: "*", // 🔓 Permitir todas las solicitudes (puedes cambiar "*" por tu dominio)
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(express.json({ limit: "50mb" }));
-app.use(fileUpload({ limits: { fileSize: 100 * 1024 * 1024 }, useTempFiles: false }));
+app.use(fileUpload({
+  limits: { fileSize: 100 * 1024 * 1024 },
+  useTempFiles: false,
+}));
 
 // ===============================
-// 🔐 FUNCIÓN: Obtener nuevo access_token automáticamente
+// 🔐 OBTENER ACCESS TOKEN DE DROPBOX
 // ===============================
 async function getDropboxAccessToken() {
   const clientId = process.env.DROPBOX_APP_KEY;
@@ -28,8 +38,7 @@ async function getDropboxAccessToken() {
   const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
     method: "POST",
     headers: {
-      Authorization:
-        "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
+      Authorization: "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
@@ -43,12 +52,13 @@ async function getDropboxAccessToken() {
     console.error("❌ No se pudo obtener un nuevo access_token de Dropbox:", data);
     throw new Error("Fallo al renovar el token de Dropbox");
   }
+
   console.log("🔄 Nuevo access_token obtenido correctamente");
   return data.access_token;
 }
 
 // ===============================
-// 🗂️ Inicializar Dropbox dinámicamente
+// 🗂️ INICIALIZAR DROPBOX
 // ===============================
 let dbx;
 
@@ -63,7 +73,7 @@ async function initDropbox() {
 await initDropbox();
 
 // ===============================
-// 📧 Configuración del correo
+// 📧 CONFIGURAR CORREO
 // ===============================
 const transporter = nodemailer.createTransport({
   pool: true,
@@ -74,14 +84,14 @@ const transporter = nodemailer.createTransport({
 });
 
 // ===============================
-// 🌐 Endpoint de prueba
+// 🌐 ENDPOINT DE PRUEBA
 // ===============================
 app.get("/", (req, res) => {
-  res.json({ message: "🚀 API Dropbox funcionando correctamente y token automático activo" });
+  res.json({ message: "🚀 API Dropbox funcionando correctamente con CORS habilitado" });
 });
 
 // ===============================
-// 📤 Subida de archivos a Dropbox
+// 📤 FUNCIÓN PARA SUBIDA CHUNKED
 // ===============================
 async function uploadFileChunked(dbx, path, data) {
   const chunkSize = 8 * 1024 * 1024;
@@ -117,7 +127,7 @@ async function uploadFileChunked(dbx, path, data) {
 }
 
 // ===============================
-// 📥 Endpoint principal para subir formularios
+// 📥 ENDPOINT PRINCIPAL (SUBIDA)
 // ===============================
 app.post("/api/upload", async (req, res) => {
   try {
@@ -126,7 +136,9 @@ app.post("/api/upload", async (req, res) => {
     const { nombre, correo, cedula, ciudad, asunto } = req.body;
     const files = req.files?.files;
 
-    if (!files) return res.status(400).json({ ok: false, error: "No se enviaron archivos" });
+    if (!files) {
+      return res.status(400).json({ ok: false, error: "No se enviaron archivos" });
+    }
 
     const radicado = uuidv4().split("-")[0];
     const carpeta = `/formularios/${radicado}`;
@@ -134,25 +146,9 @@ app.post("/api/upload", async (req, res) => {
     // Crear carpeta
     await dbx.filesCreateFolderV2({ path: carpeta });
 
+    // Subir archivos
     const fileArray = Array.isArray(files) ? files : [files];
-    const maxConcurrent = 4;
-    const queue = [...fileArray];
-    const active = [];
-
-    const uploadNext = async () => {
-      if (queue.length === 0) return;
-      const file = queue.shift();
-      const promise = uploadFileChunked(dbx, `${carpeta}/${file.name}`, file.data)
-        .finally(() => {
-          active.splice(active.indexOf(promise), 1);
-          uploadNext();
-        });
-      active.push(promise);
-      if (active.length < maxConcurrent) uploadNext();
-      return promise;
-    };
-
-    const uploads = Array.from({ length: Math.min(maxConcurrent, fileArray.length) }, uploadNext);
+    const uploads = fileArray.map((f) => uploadFileChunked(dbx, `${carpeta}/${f.name}`, f.data));
     await Promise.all(uploads);
 
     // Enviar correos
@@ -160,7 +156,7 @@ app.post("/api/upload", async (req, res) => {
       from: process.env.FROM_EMAIL,
       to: process.env.ADMIN_EMAIL,
       subject: `Nuevo formulario recibido - ${radicado}`,
-      text: `Se recibió un nuevo formulario:\nNombre: ${nombre}\nCorreo: ${correo}\nCédula: ${cedula}\nCiudad: ${ciudad}\nAsunto: ${asunto}\nRadicado: ${radicado}`,
+      text: `Nuevo formulario recibido:\n\nNombre: ${nombre}\nCorreo: ${correo}\nCédula: ${cedula}\nCiudad: ${ciudad}\nAsunto: ${asunto}\nRadicado: ${radicado}`,
     };
 
     const correoUsuario = {
@@ -183,7 +179,7 @@ app.post("/api/upload", async (req, res) => {
 });
 
 // ===============================
-// 🔊 Iniciar servidor
+// 🚀 INICIAR SERVIDOR
 // ===============================
 app.listen(PORT, () => console.log(`✅ API corriendo en puerto ${PORT}`));
 
